@@ -1,4 +1,4 @@
-name: Windows RDP (Playit)
+name: Windows RDP (Bore - No Account)
 
 on: workflow_dispatch
 
@@ -7,8 +7,11 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - name: Download Playit Agent
-      run: Invoke-WebRequest https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-windows-x86_64-signed.exe -OutFile playit.exe
+    - name: Download Bore
+      run: Invoke-WebRequest https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-pc-windows-msvc.zip -OutFile bore.zip
+
+    - name: Extract Bore
+      run: Expand-Archive bore.zip -DestinationPath .
 
     - name: Enable RDP & Firewall
       run: |
@@ -21,21 +24,35 @@ jobs:
         $pass = ConvertTo-SecureString "P@ssw0rd!" -AsPlainText -Force
         Set-LocalUser -Name "runneradmin" -Password $pass
 
-    - name: Start Playit Agent
-      # Your secret key is inserted below
-      run: cmd /c start /b playit.exe --secret 5061699cd3fd47df3ebe13164d996506b50f23c6e9755823397f2c2b3701b721
-
-    - name: Connection Instructions
+    - name: Start Bore Tunnel
       run: |
-        Write-Host "::notice::SUCCESS! The Agent is running."
-        Write-Host "::notice::--------------------------------------------------"
-        Write-Host "::notice::NOW GO TO THE PLAYIT.GG WEBSITE DASHBOARD!"
-        Write-Host "::notice::1. Wait for the agent to turn GREEN (Online)."
-        Write-Host "::notice::2. Click 'Add Tunnel'."
-        Write-Host "::notice::3. Set Local Address to: 127.0.0.1"
-        Write-Host "::notice::4. Set Local Port to: 3389"
-        Write-Host "::notice::5. Click Add. Use the address it gives you!"
-        Write-Host "::notice::--------------------------------------------------"
+        # Start Bore in the background
+        # It connects to the public 'bore.pub' server
+        Start-Process -FilePath ".\bore.exe" -ArgumentList "local 3389 --to bore.pub" -RedirectStandardOutput "bore.log" -PassThru
+
+    - name: Get Connection Info
+      run: |
+        Write-Host "Waiting for tunnel connection..."
+        Start-Sleep -Seconds 5
+        
+        # Read the log to find the port number
+        $log = Get-Content bore.log
+        $port_line = $log | Select-String "listening at bore.pub"
+        
+        if ($port_line) {
+            # Extract just the port number
+            $port = $port_line.ToString().Split(":")[-1].Trim()
+            
+            Write-Host "::notice::SUCCESS! CONNECT NOW!"
+            Write-Host "::notice::---------------------------------------"
+            Write-Host "::notice::Address:  bore.pub:$port"
+            Write-Host "::notice::User:     runneradmin"
+            Write-Host "::notice::Pass:     P@ssw0rd!"
+            Write-Host "::notice::---------------------------------------"
+        } else {
+            Write-Error "Could not get port. Check logs."
+            Get-Content bore.log
+        }
 
     - name: Keep Alive
       run: |
