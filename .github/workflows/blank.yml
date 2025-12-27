@@ -1,4 +1,4 @@
-name: Windows RDP (Cloudflare Tunnel)
+name: Windows RDP (Final Fix)
 
 on: workflow_dispatch
 
@@ -7,56 +7,45 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - name: Download and Install Cloudflared
-      run: |
-        # Download the standalone binary instead of MSI for easier access
-        Invoke-WebRequest https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe -OutFile cloudflared.exe
+    - name: Download Cloudflared
+      run: Invoke-WebRequest https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe -OutFile cloudflared.exe
 
-    - name: Force Start RDP Service
+    - name: Force Start RDP
       run: |
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 0
         netsh advfirewall firewall set rule group="remote desktop" new enable=Yes
-        netsh advfirewall firewall add rule name="Cloudflare_RDP" dir=in action=allow protocol=TCP localport=3389
         Restart-Service -Force -Name TermService
-        
-        # Verify RDP is listening
-        $check = Get-NetTCPConnection -LocalPort 3389 -ErrorAction SilentlyContinue
-        if ($check) { Write-Host "SUCCESS: Port 3389 is listening." }
-        else { throw "RDP Service failed to start." }
 
     - name: Set Password
       run: |
         $pass = ConvertTo-SecureString "P@ssw0rd!" -AsPlainText -Force
         Set-LocalUser -Name "runneradmin" -Password $pass
 
-    - name: Start Cloudflare Tunnel
+    - name: Start Tunnel
       run: |
-        # Start using the local path .\cloudflared.exe to avoid 'file not found'
+        # Start tunnel and wait longer for the link to generate
         Start-Process -FilePath ".\cloudflared.exe" -ArgumentList "tunnel --url rdp://localhost:3389" -RedirectStandardError "tunnel.log"
 
-    - name: Get Connection Address
+    - name: GET REAL HOSTNAME
       run: |
-        Write-Host "Waiting for Cloudflare URL..."
-        Start-Sleep -Seconds 30
+        Write-Host "Searching for your unique link..."
+        # Wait 45 seconds to ensure the link is generated
+        Start-Sleep -Seconds 45
         $log = Get-Content tunnel.log
-        $url_line = $log | Select-String "trycloudflare.com"
         
-        if ($url_line) {
-            # Extract the URL from the log output
-            $url = ($url_line | Select-String -Pattern "https://[a-zA-Z0-9-.]+.trycloudflare.com").Matches.Value
-            $url = $url.Replace("https://", "")
-            
+        # This search looks for the specific 'https://' link in the logs
+        $url = $log | Select-String -Pattern "https://[a-zA-Z0-9-.]+.trycloudflare.com" | Select-Object -First 1
+        
+        if ($url) {
+            $clean_url = ($url.Matches.Value).Replace("https://", "")
             Write-Host "::notice::========================================"
-            Write-Host "::notice::HOSTNAME: $url"
+            Write-Host "::notice::COPY THIS ADDRESS: $clean_url"
             Write-Host "::notice::PORT: 443"
-            Write-Host "::notice::USER: runneradmin"
-            Write-Host "::notice::PASS: P@ssw0rd!"
             Write-Host "::notice::========================================"
         } else {
-            Write-Host "Full Tunnel Log for Debugging:"
+            Write-Host "Link not found yet. Printing full log to find it manually:"
             Get-Content tunnel.log
-            exit 1
         }
 
     - name: Keep Alive
