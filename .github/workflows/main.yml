@@ -1,4 +1,4 @@
-name: Windows Browser VNC (Fixed)
+name: Windows Browser VNC (No App)
 
 on: workflow_dispatch
 
@@ -19,26 +19,34 @@ jobs:
         & "C:\Program Files\TightVNC\tvnserver.exe" -install
         & "C:\Program Files\TightVNC\tvnserver.exe" -start
 
+    - name: Setup noVNC Web Bridge
+      run: |
+        # Install the web-to-vnc bridge
+        npm install -g websockify
+        # Download the noVNC interface files
+        Invoke-WebRequest https://github.com/novnc/noVNC/archive/refs/heads/master.zip -OutFile novnc.zip
+        Expand-Archive novnc.zip -DestinationPath .
+        # Start the bridge on port 8080
+        Start-Process powershell -ArgumentList "websockify 8080 localhost:5900 --web ./noVNC-master" -WindowStyle Hidden
+
     - name: Start Tunnel
       run: |
-        # Use Port 5900 for VNC
-        Start-Process -FilePath ".\bore.exe" -ArgumentList "local 5900 --to bore.pub" -RedirectStandardOutput "bore.log"
+        # Tunnel the web port (8080) so you can open it in a browser
+        cmd /c "bore local 8080 --to bore.pub > bore.log 2>&1"
 
     - name: Get Connection Address
       run: |
-        Write-Host "Waiting for tunnel..."
+        Write-Host "Waiting for your browser link..."
         Start-Sleep -Seconds 30
-        $log = Get-Content bore.log -ErrorAction SilentlyContinue
-        
-        # Fixed logic to avoid the "null array" error
-        if ($log -match "listening at bore.pub:(?<port>\d+)") {
-            $port = $Matches.port
+        $log = Get-Content bore.log -Raw
+        if ($log -match "bore.pub:(?<p>\d+)") {
+            $port = $Matches.p
             Write-Host "::notice::========================================"
-            Write-Host "::notice::VNC ADDRESS: bore.pub:$port"
+            Write-Host "::notice::OPEN IN CHROME: http://bore.pub:$port/vnc.html"
             Write-Host "::notice::PASSWORD: P@ssw0rd!"
             Write-Host "::notice::========================================"
         } else {
-            Write-Host "Bore Log Output:"
+            Write-Host "LOG CONTENT:"
             $log
             exit 1
         }
