@@ -1,4 +1,4 @@
-name: Windows RDP (Brute Force Fix)
+name: Windows RDP (Force-Start)
 
 on: workflow_dispatch
 
@@ -13,14 +13,23 @@ jobs:
     - name: Extract Bore
       run: Expand-Archive bore.zip -DestinationPath .
 
-    - name: Brute Force Firewall & RDP
+    - name: Force Start RDP Service
       run: |
-        # Enable RDP
+        # Enable RDP in Registry
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
-        # Brute force the firewall for port 3389
-        netsh advfirewall firewall add rule name="Allow RDP" dir=in action=allow protocol=TCP localport=3389
-        # Disable NLA (Network Level Authentication) which causes mobile connection issues
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 0
+        
+        # Open Firewall for all profiles
+        netsh advfirewall firewall set rule group="remote desktop" new enable=Yes
+        netsh advfirewall firewall add rule name="Bore_RDP" dir=in action=allow protocol=TCP localport=3389
+        
+        # Force Restart the Remote Desktop Service
+        Restart-Service -Force -Name TermService
+        
+        # Check if Port 3389 is actually listening now
+        $check = Get-NetTCPConnection -LocalPort 3389 -ErrorAction SilentlyContinue
+        if ($check) { Write-Host "SUCCESS: Port 3389 is now listening!" }
+        else { Write-Error "ERROR: Port 3389 is STILL NOT listening." }
 
     - name: Set Password
       run: |
@@ -33,13 +42,15 @@ jobs:
 
     - name: Get Connection Info
       run: |
-        Write-Host "Waiting 30 seconds for stable connection..."
+        Write-Host "Waiting 30 seconds for Bore..."
         Start-Sleep -Seconds 30
         $log = Get-Content bore.log
         $port_line = $log | Select-String "listening at bore.pub"
         if ($port_line) {
             $port = $port_line.ToString().Split(":")[-1].Trim()
-            Write-Host "::notice::ADDRESS: bore.pub:$port"
+            Write-Host "::notice::========================================"
+            Write-Host "::notice::RDP ADDRESS: bore.pub:$port"
+            Write-Host "::notice::========================================"
         } else {
             Get-Content bore.log
             exit 1
