@@ -1,4 +1,4 @@
-name: Windows RDP (Bore - No Account)
+name: Windows RDP (Brute Force Fix)
 
 on: workflow_dispatch
 
@@ -13,50 +13,37 @@ jobs:
     - name: Extract Bore
       run: Expand-Archive bore.zip -DestinationPath .
 
-    - name: Enable RDP & Firewall
+    - name: Brute Force Firewall & RDP
       run: |
+        # Enable RDP
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
-        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+        # Brute force the firewall for port 3389
+        netsh advfirewall firewall add rule name="Allow RDP" dir=in action=allow protocol=TCP localport=3389
+        # Disable NLA (Network Level Authentication) which causes mobile connection issues
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 0
 
-    - name: Set Admin Password
+    - name: Set Password
       run: |
         $pass = ConvertTo-SecureString "P@ssw0rd!" -AsPlainText -Force
         Set-LocalUser -Name "runneradmin" -Password $pass
 
-    - name: Start Bore Tunnel
+    - name: Start Bore
       run: |
-        # Start Bore in the background
-        # It connects to the public 'bore.pub' server
-        Start-Process -FilePath ".\bore.exe" -ArgumentList "local 3389 --to bore.pub" -RedirectStandardOutput "bore.log" -PassThru
+        Start-Process -FilePath ".\bore.exe" -ArgumentList "local 3389 --to bore.pub" -RedirectStandardOutput "bore.log"
 
     - name: Get Connection Info
       run: |
-        Write-Host "Waiting for tunnel connection..."
-        Start-Sleep -Seconds 5
-        
-        # Read the log to find the port number
+        Write-Host "Waiting 30 seconds for stable connection..."
+        Start-Sleep -Seconds 30
         $log = Get-Content bore.log
         $port_line = $log | Select-String "listening at bore.pub"
-        
         if ($port_line) {
-            # Extract just the port number
             $port = $port_line.ToString().Split(":")[-1].Trim()
-            
-            Write-Host "::notice::SUCCESS! CONNECT NOW!"
-            Write-Host "::notice::---------------------------------------"
-            Write-Host "::notice::Address:  bore.pub:$port"
-            Write-Host "::notice::User:     runneradmin"
-            Write-Host "::notice::Pass:     P@ssw0rd!"
-            Write-Host "::notice::---------------------------------------"
+            Write-Host "::notice::ADDRESS: bore.pub:$port"
         } else {
-            Write-Error "Could not get port. Check logs."
             Get-Content bore.log
+            exit 1
         }
 
     - name: Keep Alive
-      run: |
-        Write-Host "Session is active. Press Cancel Workflow to stop."
-        while ($true) {
-          Start-Sleep -Seconds 60
-        }
+      run: while ($true) { Start-Sleep -Seconds 60 }
