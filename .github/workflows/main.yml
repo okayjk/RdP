@@ -1,0 +1,51 @@
+name: Windows Browser VNC
+
+on: workflow_dispatch
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Download Tools
+      run: |
+        Invoke-WebRequest https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-pc-windows-msvc.zip -OutFile bore.zip
+        Expand-Archive bore.zip -DestinationPath .
+        Invoke-WebRequest https://www.tightvnc.com/download/2.8.84/tightvnc-2.8.84-gpl-setup-64bit.msi -OutFile vnc_setup.msi
+        # Download a pre-compiled websockify for Windows
+        Invoke-WebRequest https://github.com/novnc/websockify-js/archive/refs/heads/master.zip -OutFile websockify.zip
+        Expand-Archive websockify.zip -DestinationPath .
+
+    - name: Install & Start VNC
+      run: |
+        Start-Process msiexec.exe -ArgumentList '/i', 'vnc_setup.msi', '/quiet', '/norestart', 'SET_PASSWORD=1', 'VALUE_PASSWORD=P@ssw0rd!' -Wait
+        & "C:\Program Files\TightVNC\tvnserver.exe" -install
+        & "C:\Program Files\TightVNC\tvnserver.exe" -start
+
+    - name: Start Web Bridge (noVNC)
+      run: |
+        # Using Node.js (pre-installed on GitHub runners) to run websockify
+        cd websockify-js-master\websockify
+        npm install
+        Start-Process node -ArgumentList "websockify.js 8080 localhost:5900" -WindowStyle Hidden
+
+    - name: Start Tunnel
+      run: |
+        # Port 8080 is our "Website" port
+        Start-Process -FilePath ".\bore.exe" -ArgumentList "local 8080 --to bore.pub" -RedirectStandardOutput "bore.log"
+
+    - name: Get Web Link
+      run: |
+        Start-Sleep -Seconds 20
+        $log = Get-Content bore.log
+        if ($log -match "listening at bore.pub:(?<port>\d+)") {
+            $port = $Matches['port']
+            Write-Host "::notice::========================================"
+            Write-Host "::notice::OPEN THIS IN CHROME:"
+            Write-Host "::notice::http://bore.pub:$port"
+            Write-Host "::notice::PASSWORD: P@ssw0rd!"
+            Write-Host "::notice::========================================"
+        }
+
+    - name: Keep Alive
+      run: while ($true) { Start-Sleep -Seconds 60 }
