@@ -1,4 +1,4 @@
-name: Windows RDP Lab (Region Fix)
+name: Windows RDP Lab (Final Fix)
 
 on: workflow_dispatch
 
@@ -13,13 +13,20 @@ jobs:
     - name: Extract Ngrok
       run: Expand-Archive ngrok.zip -DestinationPath .
 
-    - name: Connect to Ngrok Account
-      # Using your NEW token
+    # 1. AUTHENTICATE
+    - name: Connect to Ngrok
       run: .\ngrok.exe authtoken 37Qoa8wvvl7OY3aOC7Gw0Y9NvrC_7ArBh4xL512bDMm2trsA4
 
-    - name: Verify Token Validity
-      # This step checks if the token is accepted before we try to tunnel
-      run: .\ngrok.exe config check
+    # 2. DIAGNOSE TOKEN (Crucial Step)
+    - name: Test Ngrok Config
+      run: |
+        Write-Host "Checking if token is valid..."
+        # This will print "Account Suspended" or "Online" directly to the logs
+        .\ngrok.exe config check
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Token invalid or account banned. Please create a NEW Ngrok account."
+            exit 1
+        }
 
     - name: Enable RDP & Firewall
       run: |
@@ -32,42 +39,45 @@ jobs:
         $password = ConvertTo-SecureString "P@ssw0rd!" -AsPlainText -Force
         Set-LocalUser -Name "runneradmin" -Password $password
 
-    - name: Start Ngrok Tunnel (Asia Region)
+    # 3. START TUNNEL (Foreground Test)
+    # We run it for 10 seconds in the foreground to force errors to appear in the GitHub UI
+    - name: Launch Tunnel
       run: |
-        # Added '--region ap' to fix connection timeouts in Asia
-        Start-Process -FilePath ".\ngrok.exe" -ArgumentList "tcp 3389 --region ap --log=stdout" -RedirectStandardOutput "ngrok.log" -RedirectStandardError "ngrok_error.log"
+        $job = Start-Job -ScriptBlock {
+            param($path)
+            # Region AP (Asia) for Bangladesh latency
+            & $path tcp 3389 --region ap
+        } -ArgumentList (Resolve-Path .\ngrok.exe).Path
 
-    - name: Fetch Connection URL
-      run: |
-        # Wait 20 seconds for the Asia server to connect
-        Start-Sleep -Seconds 20
+        # Wait 15 seconds to see if it crashes
+        Start-Sleep -Seconds 15
         
-        try {
-          # Check if process is still alive
-          if (-not (Get-Process ngrok -ErrorAction SilentlyContinue)) {
-             throw "Ngrok process died. The token might be invalid or the account suspended."
-          }
-
-          # Get URL from local API
-          $response = Invoke-RestMethod http://localhost:4040/api/tunnels
-          $url = $response.tunnels[0].public_url
-          $clean_url = $url.Replace("tcp://", "")
-          
-          Write-Host "::notice::=========================================="
-          Write-Host "::notice::RDP ADDRESS: $clean_url"
-          Write-Host "::notice::USERNAME:    runneradmin"
-          Write-Host "::notice::PASSWORD:    P@ssw0rd!"
-          Write-Host "::notice::=========================================="
-        } catch {
-          Write-Error "Ngrok Failed. LOG DUMP BELOW:"
-          if (Test-Path ngrok.log) { Get-Content ngrok.log }
-          if (Test-Path ngrok_error.log) { Get-Content ngrok_error.log }
-          exit 1
+        # Check Job State
+        $state = Get-Job $job
+        if ($state.State -eq 'Failed' -or $state.State -eq 'Completed') {
+            Write-Error "Ngrok crashed immediately. Output below:"
+            Receive-Job $job
+            exit 1
         }
 
-    - name: Keep Session Alive
+    - name: Get Connection Info
       run: |
-        Write-Host "Session is active. Press 'Cancel Workflow' to stop."
-        while ($true) {
-          Start-Sleep -Seconds 60
+        try {
+            $response = Invoke-RestMethod http://localhost:4040/api/tunnels
+            $url = $response.tunnels[0].public_url
+            $clean_url = $url.Replace("tcp://", "")
+            
+            Write-Host "::notice::SUCCESS! YOUR RDP ADDRESS IS BELOW"
+            Write-Host "::notice::======================================="
+            Write-Host "::notice::Address:  $clean_url"
+            Write-Host "::notice::User:     runneradmin"
+            Write-Host "::notice::Pass:     P@ssw0rd!"
+            Write-Host "::notice::======================================="
+        } catch {
+            Write-Error "Could not get URL. Access http://localhost:4040 failed."
         }
+
+    - name: Keep Alive
+      run: |
+        Write-Host "RDP is running. Cancel workflow to stop."
+        while ($true) { Start-Sleep -Seconds 60 }
