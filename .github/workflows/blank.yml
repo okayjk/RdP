@@ -14,8 +14,8 @@ jobs:
       run: Expand-Archive ngrok.zip -DestinationPath .
 
     - name: Connect to Ngrok Account
-      # I have inserted your token below.
-      run: .\ngrok.exe authtoken 37QmmuI0KPZwaHEtvaETvBkK7jp_5ksQLTqovhEE5br7iCkFQ
+      # Updated with your NEW token
+      run: .\ngrok.exe authtoken 37Qoa8wvvl7OY3aOC7Gw0Y9NvrC_7ArBh4xL512bDMm2trsA4
 
     - name: Enable RDP & Firewall
       run: |
@@ -35,13 +35,13 @@ jobs:
 
     - name: Fetch Connection URL
       run: |
-        # Wait 10 seconds for the tunnel to establish
-        Start-Sleep -Seconds 10
+        # Wait 15 seconds to ensure the tunnel registers
+        Start-Sleep -Seconds 15
         
         try {
-          # Check if process is running
+          # Check if the process is actually running
           if (-not (Get-Process ngrok -ErrorAction SilentlyContinue)) {
-             throw "Ngrok process died immediately."
+             throw "Ngrok process died immediately. Check logs below."
           }
 
           # Get URL from local API
@@ -58,6 +58,7 @@ jobs:
           Write-Error "Ngrok Failed. Here are the logs:"
           if (Test-Path ngrok.log) { Get-Content ngrok.log }
           if (Test-Path ngrok_error.log) { Get-Content ngrok_error.log }
+          exit 1
         }
 
     - name: Keep Session Alive
