@@ -1,4 +1,4 @@
-name: Windows Browser VNC (Final Fix)
+name: Windows Browser VNC (Fixed)
 
 on: workflow_dispatch
 
@@ -7,49 +7,41 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - name: Download Tools
+    - name: Download Bore & VNC
       run: |
         Invoke-WebRequest https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-pc-windows-msvc.zip -OutFile bore.zip
         Expand-Archive bore.zip -DestinationPath .
         Invoke-WebRequest https://www.tightvnc.com/download/2.8.84/tightvnc-2.8.84-gpl-setup-64bit.msi -OutFile vnc_setup.msi
 
-    - name: Install & Start TightVNC
+    - name: Install VNC Server
       run: |
         Start-Process msiexec.exe -ArgumentList '/i', 'vnc_setup.msi', '/quiet', '/norestart', 'SET_PASSWORD=1', 'VALUE_PASSWORD=P@ssw0rd!' -Wait
         & "C:\Program Files\TightVNC\tvnserver.exe" -install
         & "C:\Program Files\TightVNC\tvnserver.exe" -start
 
-    - name: Setup Web Bridge (noVNC)
-      run: |
-        # Use a pre-built web bridge for speed
-        Invoke-WebRequest https://github.com/novnc/noVNC/archive/refs/heads/master.zip -OutFile novnc.zip
-        Expand-Archive novnc.zip -DestinationPath .
-        # Start a simple web server for the VNC files using Python (built-in)
-        Start-Process python -ArgumentList "-m http.server 8080" -WindowStyle Hidden
-
     - name: Start Tunnel
       run: |
-        # We tunnel port 5900 (VNC) and 8080 (Web)
-        # For simplicity, let's tunnel the VNC port directly
+        # Use Port 5900 for VNC
         Start-Process -FilePath ".\bore.exe" -ArgumentList "local 5900 --to bore.pub" -RedirectStandardOutput "bore.log"
 
-    - name: Get Web Link
+    - name: Get Connection Address
       run: |
-        Write-Host "Waiting for tunnel to start..."
-        for ($i=0; $i -lt 10; $i++) {
-            Start-Sleep -Seconds 10
-            $log = Get-Content bore.log -ErrorAction SilentlyContinue
-            if ($log -match "listening at bore.pub:(?<port>\d+)") {
-                $port = $Matches['port']
-                Write-Host "::notice::========================================"
-                Write-Host "::notice::VNC ADDRESS: bore.pub:$port"
-                Write-Host "::notice::VNC PASSWORD: P@ssw0rd!"
-                Write-Host "::notice::========================================"
-                return
-            }
-            Write-Host "Still waiting for link..."
+        Write-Host "Waiting for tunnel..."
+        Start-Sleep -Seconds 30
+        $log = Get-Content bore.log -ErrorAction SilentlyContinue
+        
+        # Fixed logic to avoid the "null array" error
+        if ($log -match "listening at bore.pub:(?<port>\d+)") {
+            $port = $Matches.port
+            Write-Host "::notice::========================================"
+            Write-Host "::notice::VNC ADDRESS: bore.pub:$port"
+            Write-Host "::notice::PASSWORD: P@ssw0rd!"
+            Write-Host "::notice::========================================"
+        } else {
+            Write-Host "Bore Log Output:"
+            $log
+            exit 1
         }
-        Write-Error "Bore failed to start. Check logs."
 
     - name: Keep Alive
       run: while ($true) { Start-Sleep -Seconds 60 }
