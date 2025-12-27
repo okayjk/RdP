@@ -1,5 +1,3 @@
-# This is a basic workflow to help you get started with Actions
-
 name: Windows RDP Lab
 
 on: workflow_dispatch
@@ -16,7 +14,7 @@ jobs:
       run: Expand-Archive ngrok.zip -DestinationPath .
 
     - name: Connect to Ngrok Account
-      # REPLACE 'PASTE_YOUR_TOKEN_HERE' WITH YOUR ACTUAL TOKEN
+      # I have inserted your token below.
       run: .\ngrok.exe authtoken 37QmmuI0KPZwaHEtvaETvBkK7jp_5ksQLTqovhEE5br7iCkFQ
 
     - name: Enable RDP & Firewall
@@ -30,28 +28,39 @@ jobs:
         $password = ConvertTo-SecureString "P@ssw0rd!" -AsPlainText -Force
         Set-LocalUser -Name "runneradmin" -Password $password
 
-    - name: Start Ngrok Tunnel (Background)
+    - name: Start Ngrok Tunnel
       run: |
-        Start-Process -FilePath ".\ngrok.exe" -ArgumentList "tcp 3389"
+        # Starting ngrok in the background and logging output to check for errors
+        Start-Process -FilePath ".\ngrok.exe" -ArgumentList "tcp 3389 --log=stdout" -RedirectStandardOutput "ngrok.log" -RedirectStandardError "ngrok_error.log"
 
     - name: Fetch Connection URL
       run: |
+        # Wait 10 seconds for the tunnel to establish
         Start-Sleep -Seconds 10
+        
         try {
+          # Check if process is running
+          if (-not (Get-Process ngrok -ErrorAction SilentlyContinue)) {
+             throw "Ngrok process died immediately."
+          }
+
+          # Get URL from local API
           $response = Invoke-RestMethod http://localhost:4040/api/tunnels
           $url = $response.tunnels[0].public_url
           $clean_url = $url.Replace("tcp://", "")
           
-          Write-Host "---------------------------------------------------"
-          Write-Host "CONNECT TO THIS ADDRESS: $clean_url"
-          Write-Host "USERNAME: runneradmin"
-          Write-Host "PASSWORD: P@ssw0rd!"
-          Write-Host "---------------------------------------------------"
+          Write-Host "::notice::=========================================="
+          Write-Host "::notice::RDP ADDRESS: $clean_url"
+          Write-Host "::notice::USERNAME:    runneradmin"
+          Write-Host "::notice::PASSWORD:    P@ssw0rd!"
+          Write-Host "::notice::=========================================="
         } catch {
-          Write-Error "Failed to fetch Ngrok URL. Is the token correct?"
+          Write-Error "Ngrok Failed. Here are the logs:"
+          if (Test-Path ngrok.log) { Get-Content ngrok.log }
+          if (Test-Path ngrok_error.log) { Get-Content ngrok_error.log }
         }
 
-    - name: Keep Alive
+    - name: Keep Session Alive
       run: |
         Write-Host "Session is active. Press 'Cancel Workflow' to stop."
         while ($true) {
