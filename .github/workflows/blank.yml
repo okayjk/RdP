@@ -16,7 +16,7 @@ jobs:
     - name: Authenticate Ngrok
       # Attempting to use your current token. 
       # If this fails, the token is dead.
-      run: .\ngrok.exe authtoken 37Qoa8wvvl7OY3aOC7Gw0Y9NvrC_7ArBh4xL512bDMm2trsA4
+      run: .\ngrok.exe authtoken 37QsEh0i5fgCZTt9D6QuZ21m3Ow_5yApVtCpiG5XMX7sj3yaD
 
     - name: Enable RDP
       run: |
