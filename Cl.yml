@@ -1,0 +1,57 @@
+name: Windows RDP Lab
+
+on: workflow_dispatch
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Download Ngrok
+      run: Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
+
+    - name: Extract Ngrok
+      run: Expand-Archive ngrok.zip -DestinationPath .
+
+    - name: Connect to Ngrok Account
+      # REPLACE 'PASTE_YOUR_TOKEN_HERE' WITH YOUR ACTUAL TOKEN
+      run: .\ngrok.exe authtoken 37QmmuI0KPZwaHEtvaETvBkK7jp_5ksQLTqovhEE5br7iCkFQ
+
+    - name: Enable RDP & Firewall
+      run: |
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+
+    - name: Set Admin Password
+      run: |
+        $password = ConvertTo-SecureString "P@ssw0rd!" -AsPlainText -Force
+        Set-LocalUser -Name "runneradmin" -Password $password
+
+    - name: Start Ngrok Tunnel (Background)
+      run: |
+        Start-Process -FilePath ".\ngrok.exe" -ArgumentList "tcp 3389"
+
+    - name: Fetch Connection URL
+      run: |
+        Start-Sleep -Seconds 10
+        try {
+          $response = Invoke-RestMethod http://localhost:4040/api/tunnels
+          $url = $response.tunnels[0].public_url
+          $clean_url = $url.Replace("tcp://", "")
+          
+          Write-Host "---------------------------------------------------"
+          Write-Host "CONNECT TO THIS ADDRESS: $clean_url"
+          Write-Host "USERNAME: runneradmin"
+          Write-Host "PASSWORD: P@ssw0rd!"
+          Write-Host "---------------------------------------------------"
+        } catch {
+          Write-Error "Failed to fetch Ngrok URL. Is the token correct?"
+        }
+
+    - name: Keep Alive
+      run: |
+        Write-Host "Session is active. Press 'Cancel Workflow' to stop."
+        while ($true) {
+          Start-Sleep -Seconds 60
+        }
