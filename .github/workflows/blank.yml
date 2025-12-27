@@ -1,4 +1,4 @@
-name: Windows RDP Lab
+name: Windows RDP Lab (Region Fix)
 
 on: workflow_dispatch
 
@@ -14,8 +14,12 @@ jobs:
       run: Expand-Archive ngrok.zip -DestinationPath .
 
     - name: Connect to Ngrok Account
-      # Updated with your NEW token
+      # Using your NEW token
       run: .\ngrok.exe authtoken 37Qoa8wvvl7OY3aOC7Gw0Y9NvrC_7ArBh4xL512bDMm2trsA4
+
+    - name: Verify Token Validity
+      # This step checks if the token is accepted before we try to tunnel
+      run: .\ngrok.exe config check
 
     - name: Enable RDP & Firewall
       run: |
@@ -28,20 +32,20 @@ jobs:
         $password = ConvertTo-SecureString "P@ssw0rd!" -AsPlainText -Force
         Set-LocalUser -Name "runneradmin" -Password $password
 
-    - name: Start Ngrok Tunnel
+    - name: Start Ngrok Tunnel (Asia Region)
       run: |
-        # Starting ngrok in the background and logging output to check for errors
-        Start-Process -FilePath ".\ngrok.exe" -ArgumentList "tcp 3389 --log=stdout" -RedirectStandardOutput "ngrok.log" -RedirectStandardError "ngrok_error.log"
+        # Added '--region ap' to fix connection timeouts in Asia
+        Start-Process -FilePath ".\ngrok.exe" -ArgumentList "tcp 3389 --region ap --log=stdout" -RedirectStandardOutput "ngrok.log" -RedirectStandardError "ngrok_error.log"
 
     - name: Fetch Connection URL
       run: |
-        # Wait 15 seconds to ensure the tunnel registers
-        Start-Sleep -Seconds 15
+        # Wait 20 seconds for the Asia server to connect
+        Start-Sleep -Seconds 20
         
         try {
-          # Check if the process is actually running
+          # Check if process is still alive
           if (-not (Get-Process ngrok -ErrorAction SilentlyContinue)) {
-             throw "Ngrok process died immediately. Check logs below."
+             throw "Ngrok process died. The token might be invalid or the account suspended."
           }
 
           # Get URL from local API
@@ -55,7 +59,7 @@ jobs:
           Write-Host "::notice::PASSWORD:    P@ssw0rd!"
           Write-Host "::notice::=========================================="
         } catch {
-          Write-Error "Ngrok Failed. Here are the logs:"
+          Write-Error "Ngrok Failed. LOG DUMP BELOW:"
           if (Test-Path ngrok.log) { Get-Content ngrok.log }
           if (Test-Path ngrok_error.log) { Get-Content ngrok_error.log }
           exit 1
