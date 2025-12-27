@@ -13,45 +13,45 @@ jobs:
     - name: Extract Ngrok
       run: Expand-Archive ngrok.zip -DestinationPath .
 
-    - name: Authenticate Ngrok
-      # Attempting to use your current token. 
-      # If this fails, the token is dead.
+    - name: Authenticate (New Token)
+      # I inserted your new token below
       run: .\ngrok.exe authtoken 37QsEh0i5fgCZTt9D6QuZ21m3Ow_5yApVtCpiG5XMX7sj3yaD
 
-    - name: Enable RDP
+    - name: Enable RDP & Firewall
       run: |
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
 
-    - name: Create User
+    - name: Set Admin Password
       run: |
         $pass = ConvertTo-SecureString "P@ssw0rd!" -AsPlainText -Force
         Set-LocalUser -Name "runneradmin" -Password $pass
 
-    - name: Start Ngrok (Asia Region)
-      run: |
-        # We use Start-Process to run it in background simply
-        Start-Process -FilePath ".\ngrok.exe" -ArgumentList "tcp 3389 --region ap"
+    - name: Start Ngrok (CMD Method)
+      # Using standard US region for maximum stability
+      # Using CMD /C START /B to force it into background reliably
+      run: cmd /c start /b ngrok.exe tcp 3389
 
     - name: Get Connection Address
       run: |
-        # Wait 15 seconds for connection
+        Write-Host "Waiting 15 seconds for tunnel to stabilize..."
         Start-Sleep -Seconds 15
         
         try {
+          # Query the local Ngrok API
           $response = Invoke-RestMethod http://localhost:4040/api/tunnels
           $url = $response.tunnels[0].public_url
           $clean_url = $url.Replace("tcp://", "")
           
-          Write-Host "::notice::SUCCESS! RDP details below:"
+          Write-Host "::notice::SUCCESS! YOUR RDP DETAILS:"
           Write-Host "::notice::--------------------------------------"
           Write-Host "::notice::Address:  $clean_url"
           Write-Host "::notice::User:     runneradmin"
           Write-Host "::notice::Pass:     P@ssw0rd!"
           Write-Host "::notice::--------------------------------------"
         } catch {
-          Write-Error "Could not find Tunnel. This usually means the Ngrok Token is BANNED or INVALID."
+          Write-Error "Ngrok is not running. Please check: 1) Did you verify your email? 2) Is the account banned?"
           exit 1
         }
 
