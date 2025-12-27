@@ -1,4 +1,4 @@
-name: Windows RDP Lab
+name: Windows RDP (Playit)
 
 on: workflow_dispatch
 
@@ -7,15 +7,8 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - name: Download Ngrok
-      run: Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
-
-    - name: Extract Ngrok
-      run: Expand-Archive ngrok.zip -DestinationPath .
-
-    - name: Authenticate (New Token)
-      # I inserted your new token below
-      run: .\ngrok.exe authtoken 37QsEh0i5fgCZTt9D6QuZ21m3Ow_5yApVtCpiG5XMX7sj3yaD
+    - name: Download Playit Agent
+      run: Invoke-WebRequest https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-windows-x86_64-signed.exe -OutFile playit.exe
 
     - name: Enable RDP & Firewall
       run: |
@@ -28,36 +21,25 @@ jobs:
         $pass = ConvertTo-SecureString "P@ssw0rd!" -AsPlainText -Force
         Set-LocalUser -Name "runneradmin" -Password $pass
 
-    - name: Start Ngrok (CMD Method)
-      # Using standard US region for maximum stability
-      # Using CMD /C START /B to force it into background reliably
-      run: cmd /c start /b ngrok.exe tcp 3389
+    - name: Start Playit Agent
+      # Your secret key is inserted below
+      run: cmd /c start /b playit.exe --secret 5061699cd3fd47df3ebe13164d996506b50f23c6e9755823397f2c2b3701b721
 
-    - name: Get Connection Address
+    - name: Connection Instructions
       run: |
-        Write-Host "Waiting 15 seconds for tunnel to stabilize..."
-        Start-Sleep -Seconds 15
-        
-        try {
-          # Query the local Ngrok API
-          $response = Invoke-RestMethod http://localhost:4040/api/tunnels
-          $url = $response.tunnels[0].public_url
-          $clean_url = $url.Replace("tcp://", "")
-          
-          Write-Host "::notice::SUCCESS! YOUR RDP DETAILS:"
-          Write-Host "::notice::--------------------------------------"
-          Write-Host "::notice::Address:  $clean_url"
-          Write-Host "::notice::User:     runneradmin"
-          Write-Host "::notice::Pass:     P@ssw0rd!"
-          Write-Host "::notice::--------------------------------------"
-        } catch {
-          Write-Error "Ngrok is not running. Please check: 1) Did you verify your email? 2) Is the account banned?"
-          exit 1
-        }
+        Write-Host "::notice::SUCCESS! The Agent is running."
+        Write-Host "::notice::--------------------------------------------------"
+        Write-Host "::notice::NOW GO TO THE PLAYIT.GG WEBSITE DASHBOARD!"
+        Write-Host "::notice::1. Wait for the agent to turn GREEN (Online)."
+        Write-Host "::notice::2. Click 'Add Tunnel'."
+        Write-Host "::notice::3. Set Local Address to: 127.0.0.1"
+        Write-Host "::notice::4. Set Local Port to: 3389"
+        Write-Host "::notice::5. Click Add. Use the address it gives you!"
+        Write-Host "::notice::--------------------------------------------------"
 
     - name: Keep Alive
       run: |
-        Write-Host "RDP Running. Cancel workflow to stop."
+        Write-Host "Session is active. Press Cancel Workflow to stop."
         while ($true) {
           Start-Sleep -Seconds 60
         }
